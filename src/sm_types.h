@@ -171,9 +171,9 @@ static std::string sm_event_type_str(SmEventType event_type) {
 /// Basic metadata about a session end point, sent in session management packets
 class SessionEndpoint {
  public:
-  TransportType transport_type;
   char hostname[kMaxHostnameLen];  ///< DNS-resolvable hostname
   uint16_t sm_udp_port;            ///< Management UDP port
+  uint16_t data_udp_port;            ///< Management UDP port
   uint8_t rpc_id;                  ///< ID of the owner
   uint16_t session_num;  ///< The session number of this endpoint in its Rpc
   Transport::RoutingInfo routing_info;  ///< Endpoint's routing info
@@ -181,6 +181,7 @@ class SessionEndpoint {
   SessionEndpoint() {
     memset(static_cast<void *>(hostname), 0, sizeof(hostname));
     sm_udp_port = 0;  // UDP port 0 is naturally invalid
+    data_udp_port = 0;
     rpc_id = kInvalidRpcId;
     session_num = kInvalidSessionNum;
     memset(static_cast<void *>(&routing_info), 0, sizeof(routing_info));
@@ -217,8 +218,7 @@ class SessionEndpoint {
   /// Compare two endpoints. RoutingInfo is left out because the SessionEndpoint
   /// object in session managament packets may not have routing info.
   bool operator==(const SessionEndpoint &other) const {
-    return transport_type == other.transport_type &&
-           strcmp(hostname, other.hostname) == 0 &&
+    return strcmp(hostname, other.hostname) == 0 &&
            sm_udp_port == other.sm_udp_port && rpc_id == other.rpc_id &&
            session_num == other.session_num;
   }

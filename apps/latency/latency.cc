@@ -58,18 +58,18 @@ void req_handler(erpc::ReqHandle *req_handle, void *_context) {
   c->file_offset += copy_size;
 #endif
 
-  erpc::Rpc<erpc::CTransport>::resize_msg_buffer(&req_handle->pre_resp_msgbuf,
+  erpc::Rpc::resize_msg_buffer(&req_handle->pre_resp_msgbuf,
                                                  kAppRespSize);
   c->rpc->enqueue_response(req_handle, &req_handle->pre_resp_msgbuf);
 }
 
 void server_func(erpc::Nexus *nexus) {
-  std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
-  uint8_t phy_port = port_vec.at(0);
+  // std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
+  // uint8_t phy_port = port_vec.at(0);
 
   ServerContext c;
-  erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void *>(&c), 0 /* tid */,
-                                  basic_sm_handler, phy_port);
+  erpc::Rpc rpc(nexus, static_cast<void *>(&c), 0 /* tid */,
+                                  basic_sm_handler);
   c.rpc = &rpc;
 
 #if USE_PMEM == true
@@ -119,12 +119,12 @@ void app_cont_func(void *_context, void *) {
 }
 
 void client_func(erpc::Nexus *nexus) {
-  std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
-  uint8_t phy_port = port_vec.at(0);
+  // std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
+  // uint8_t phy_port = port_vec.at(0);
 
   ClientContext c;
-  erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void *>(&c), 0,
-                                  basic_sm_handler, phy_port);
+  erpc::Rpc rpc(nexus, static_cast<void *>(&c), 0,
+                                  basic_sm_handler);
 
   rpc.retry_connect_on_invalid_rpc_id = true;
   c.rpc = &rpc;

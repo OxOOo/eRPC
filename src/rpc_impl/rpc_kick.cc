@@ -2,8 +2,7 @@
 
 namespace erpc {
 
-template <class TTr>
-void Rpc<TTr>::kick_req_st(SSlot *sslot) {
+void Rpc::kick_req_st(SSlot *sslot) {
   assert(in_dispatch());
   auto &credits = sslot->session->client_info.credits;
   assert(credits > 0);  // Precondition
@@ -28,8 +27,7 @@ void Rpc<TTr>::kick_req_st(SSlot *sslot) {
 // We're asked to send RFRs, which means that we have recieved the first
 // response packet, but not the entire response. The latter implies that a
 // background continuation cannot invalidate resp_msgbuf.
-template <class TTr>
-void Rpc<TTr>::kick_rfr_st(SSlot *sslot) {
+void Rpc::kick_rfr_st(SSlot *sslot) {
   assert(in_dispatch());
   auto &credits = sslot->session->client_info.credits;
   auto &ci = sslot->client_info;

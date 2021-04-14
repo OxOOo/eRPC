@@ -228,7 +228,7 @@ void client_thread(Nexus *nexus, size_t num_sessions) {
   AppContext c;
   client_connect_sessions(nexus, c, num_sessions, basic_sm_handler);
 
-  Rpc<CTransport> *rpc = c.rpc;
+  Rpc *rpc = c.rpc;
 
   // Start by filling the request window
   c.req_msgbufs.resize(erpc::kSessionReqWindow);

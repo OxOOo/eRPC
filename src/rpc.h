@@ -9,11 +9,9 @@
 #include "rpc_types.h"
 #include "session.h"
 #include "transport.h"
-#include "transport_impl/infiniband/ib_transport.h"
-#include "transport_impl/raw/raw_transport.h"
 #include "util/buffer.h"
 #include "util/fixed_queue.h"
-#include "util/huge_alloc.h"
+#include "util/std_alloc.h"
 #include "util/logger.h"
 #include "util/mt_queue.h"
 #include "util/rand.h"
@@ -67,27 +65,17 @@ namespace erpc {
  * eRPC's worker (background) threads have limited; concurrent access to Rpc
  * objects. The functions with the _st can be called from only the foreground
  * thread that owns the Rpc object.
- *
- * @tparam TTr The unreliable transport
  */
-template <class TTr>
 class Rpc {
   friend class RpcTest;
 
  private:
-  /// Initial capacity of the hugepage allocator
-  static constexpr size_t kInitialHugeAllocSize = MB(8);
-
   /// Timeout for a session management request in milliseconds
   static constexpr size_t kSMTimeoutMs = kTesting ? 10 : 100;
 
  public:
   /// Max request or response *data* size, i.e., excluding packet headers
-  static constexpr size_t kMaxMsgSize =
-      HugeAlloc::kMaxClassSize -
-      ((HugeAlloc::kMaxClassSize / TTr::kMaxDataPerPkt) * sizeof(pkthdr_t));
-  static_assert((1 << kMsgSizeBits) >= kMaxMsgSize, "");
-  static_assert((1 << kPktNumBits) * TTr::kMaxDataPerPkt > 2 * kMaxMsgSize, "");
+  static constexpr size_t kMaxMsgSize = 1024 * 1024 * 1024; // FIXME
 
   /**
    * @brief Construct the Rpc object
@@ -101,15 +89,9 @@ class Rpc {
    * \param sm_handler The session management callback that is invoked when
    * sessions are successfully created or destroyed.
    *
-   * @param phy_port An Rpc object uses one physical port on the NIC. phy_port
-   * is the zero-based index of that port among active ports, as listed by
-   * `ibv_devinfo` for Raw, InfiniBand, and RoCE transports; or by
-   * `dpdk-devbind` for DPDK transport.
-   *
    * @throw runtime_error if construction fails
    */
-  Rpc(Nexus *nexus, void *context, uint8_t rpc_id, sm_handler_t sm_handler,
-      uint8_t phy_port = 0);
+  Rpc(Nexus *nexus, void *context, uint8_t rpc_id, sm_handler_t sm_handler);
 
   /// Destroy the Rpc from a foreground thread
   ~Rpc();
@@ -140,10 +122,10 @@ class Rpc {
     // This function avoids division for small data sizes
     size_t max_num_pkts = data_size_to_num_pkts(max_data_size);
 
-    lock_cond(&huge_alloc_lock);
+    lock_cond(&std_alloc_lock);
     Buffer buffer =
-        huge_alloc->alloc(max_data_size + (max_num_pkts * sizeof(pkthdr_t)));
-    unlock_cond(&huge_alloc_lock);
+        std_alloc->alloc(max_data_size + (max_num_pkts * sizeof(pkthdr_t)));
+    unlock_cond(&std_alloc_lock);
 
     if (unlikely(buffer.buf == nullptr)) {
       MsgBuffer msg_buffer;
@@ -179,9 +161,9 @@ class Rpc {
   /// Free a MsgBuffer created by alloc_msg_buffer(). Safe to call from
   /// background threads (TS).
   inline void free_msg_buffer(MsgBuffer msg_buffer) {
-    lock_cond(&huge_alloc_lock);
-    huge_alloc->free_buf(msg_buffer.buffer);
-    unlock_cond(&huge_alloc_lock);
+    lock_cond(&std_alloc_lock);
+    std_alloc->free_buf(msg_buffer.buffer);
+    unlock_cond(&std_alloc_lock);
   }
 
   /**
@@ -320,10 +302,7 @@ class Rpc {
 
   /// Return the total amount of huge page memory allocated to the user
   inline size_t get_stat_user_alloc_tot() {
-    lock_cond(&huge_alloc_lock);
-    size_t ret = huge_alloc->get_stat_user_alloc_tot();
-    unlock_cond(&huge_alloc_lock);
-    return ret;
+    return 0;
   }
 
   /// Return the Timely instance for a connected session. Expert use only.
@@ -348,15 +327,15 @@ class Rpc {
   }
 
   /// Retrieve this Rpc's hugepage allocator. For expert use only.
-  inline HugeAlloc *get_huge_alloc() const {
+  inline STDAlloc *get_std_alloc() const {
     rt_assert(nexus->num_bg_threads == 0,
               "Cannot extract allocator because background threads exist.");
-    return huge_alloc;
+    return std_alloc;
   }
 
   /// Return the maximum *data* size in one packet for the (private) transport
   static inline constexpr size_t get_max_data_per_pkt() {
-    return TTr::kMaxDataPerPkt;
+    return Transport::kMaxDataPerPkt;
   }
 
   /// Return the hostname of the remote endpoint for a connected session
@@ -566,8 +545,8 @@ class Rpc {
    * For \p data_size = 0, the return value need not be 0, i.e., it can be 1.
    */
   static size_t data_size_to_num_pkts(size_t data_size) {
-    if (data_size <= TTr::kMaxDataPerPkt) return 1;
-    return (data_size + TTr::kMaxDataPerPkt - 1) / TTr::kMaxDataPerPkt;
+    if (data_size <= Transport::kMaxDataPerPkt) return 1;
+    return (data_size + Transport::kMaxDataPerPkt - 1) / Transport::kMaxDataPerPkt;
   }
 
   /// Return the total number of packets sent on the wire by one RPC endpoint.
@@ -708,7 +687,7 @@ class Rpc {
                sslot->progress_str().c_str(), item.drop ? " Drop." : "");
 
     tx_batch_i++;
-    if (tx_batch_i == TTr::kPostlist) do_tx_burst_st();
+    if (tx_batch_i == Transport::kPostlist) do_tx_burst_st();
   }
 
   /// Enqueue a control packet for tx_burst. ctrl_msgbuf can be reused after
@@ -735,13 +714,13 @@ class Rpc {
                sslot->progress_str().c_str(), item.drop ? " Drop." : "");
 
     tx_batch_i++;
-    if (tx_batch_i == TTr::kPostlist) do_tx_burst_st();
+    if (tx_batch_i == Transport::kPostlist) do_tx_burst_st();
   }
 
   /// Enqueue a request packet to the timing wheel
   inline void enqueue_wheel_req_st(SSlot *sslot, size_t pkt_num) {
     const size_t pkt_idx = pkt_num;
-    size_t pktsz = sslot->tx_msgbuf->get_pkt_size<TTr::kMaxDataPerPkt>(pkt_idx);
+    size_t pktsz = sslot->tx_msgbuf->get_pkt_size<Transport::kMaxDataPerPkt>(pkt_idx);
     size_t ref_tsc = dpath_rdtsc();
     size_t desired_tx_tsc = sslot->session->cc_getupdate_tx_tsc(ref_tsc, pktsz);
 
@@ -758,7 +737,7 @@ class Rpc {
   inline void enqueue_wheel_rfr_st(SSlot *sslot, size_t pkt_num) {
     const size_t pkt_idx = resp_ntoi(pkt_num, sslot->tx_msgbuf->num_pkts);
     const MsgBuffer *resp_msgbuf = sslot->client_info.resp_msgbuf;
-    size_t pktsz = resp_msgbuf->get_pkt_size<TTr::kMaxDataPerPkt>(pkt_idx);
+    size_t pktsz = resp_msgbuf->get_pkt_size<Transport::kMaxDataPerPkt>(pkt_idx);
     size_t ref_tsc = dpath_rdtsc();
     size_t desired_tx_tsc = sslot->session->cc_getupdate_tx_tsc(ref_tsc, pktsz);
 
@@ -805,8 +784,8 @@ class Rpc {
   /// Copy the data from a packet to a MsgBuffer at a packet index
   static inline void copy_data_to_msgbuf(MsgBuffer *msgbuf, size_t pkt_idx,
                                          const pkthdr_t *pkthdr) {
-    size_t offset = pkt_idx * TTr::kMaxDataPerPkt;
-    size_t to_copy = std::min(TTr::kMaxDataPerPkt, pkthdr->msg_size - offset);
+    size_t offset = pkt_idx * Transport::kMaxDataPerPkt;
+    size_t to_copy = std::min(Transport::kMaxDataPerPkt, pkthdr->msg_size - offset);
     memcpy(&msgbuf->buf[offset], pkthdr + 1, to_copy);  // From end of pkthdr
   }
 
@@ -931,7 +910,6 @@ class Rpc {
   void *context;  ///< The application context
   const uint8_t rpc_id;
   const sm_handler_t sm_handler;
-  const uint8_t phy_port;  ///< Zero-based physical port specified by app
   const size_t numa_node;
 
   // Derived
@@ -957,12 +935,12 @@ class Rpc {
   std::vector<Session *> session_vec;
 
   // Transport
-  TTr *transport = nullptr;  ///< The unreliable transport
+  Transport *transport = nullptr;  ///< The unreliable transport
 
   /// Current number of ring buffers available to use for sessions
-  size_t ring_entries_available = TTr::kNumRxRingEntries;
+  size_t ring_entries_available = Transport::kNumRxRingEntries;
 
-  Transport::tx_burst_item_t tx_burst_arr[TTr::kPostlist];  ///< Tx batch info
+  Transport::tx_burst_item_t tx_burst_arr[Transport::kPostlist];  ///< Tx batch info
   size_t tx_batch_i = 0;  ///< The batch index for TX burst array
 
   /// On calling rx_burst(), Transport fills-in packet buffer pointers into the
@@ -970,7 +948,7 @@ class Rpc {
   /// buffers in a circular order, so the ring's pointers remain unchanged
   /// after initialization. Other transports (e.g., DPDK) update rx_ring on
   /// every successful rx_burst.
-  uint8_t *rx_ring[TTr::kNumRxRingEntries];
+  uint8_t *rx_ring[Transport::kNumRxRingEntries];
   size_t rx_ring_head = 0;  ///< Current unused RX ring buffer
 
   std::vector<SSlot *> stallq;  ///< Request sslots stalled for credits
@@ -990,10 +968,10 @@ class Rpc {
   SSlot active_rpcs_root_sentinel, active_rpcs_tail_sentinel;
 
   // Allocator
-  HugeAlloc *huge_alloc = nullptr;  ///< This thread's hugepage allocator
-  std::mutex huge_alloc_lock;       ///< A lock to guard the huge allocator
+  STDAlloc *std_alloc = nullptr;  ///< This thread's hugepage allocator
+  std::mutex std_alloc_lock;       ///< A lock to guard the huge allocator
 
-  MsgBuffer ctrl_msgbufs[2 * TTr::kUnsigBatch];  ///< Buffers for RFR/CR
+  MsgBuffer ctrl_msgbufs[Transport::kCtrlBufferSize];  ///< Buffers for RFR/CR
   size_t ctrl_msgbuf_head = 0;
   FastRand fast_rand;  ///< A fast random generator
 
@@ -1064,9 +1042,10 @@ class Rpc {
   /// Size of the preallocated response buffer. This is one packet by default,
   /// but some applications might benefit from a larger preallocated buffer,
   /// at the expense of increased memory utilization.
-  size_t pre_resp_msgbuf_size = TTr::kMaxDataPerPkt;
+  size_t pre_resp_msgbuf_size = Transport::kMaxDataPerPkt;
 };
 
 // This goes at the end of every Rpc implementation file to force compilation
-#define FORCE_COMPILE_TRANSPORTS template class Rpc<CTransport>;
+// #define FORCE_COMPILE_TRANSPORTS template class Rpc<CTransport>;
+#define FORCE_COMPILE_TRANSPORTS class Rpc;
 }  // namespace erpc

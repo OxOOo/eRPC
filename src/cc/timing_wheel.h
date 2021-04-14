@@ -16,9 +16,6 @@
 #include "common.h"
 #include "sm_types.h"
 #include "sslot.h"
-#include "transport_impl/dpdk/dpdk_transport.h"
-#include "transport_impl/infiniband/ib_transport.h"
-#include "transport_impl/raw/raw_transport.h"
 #include "util/mempool.h"
 #include "wheel_record.h"
 
@@ -26,7 +23,7 @@ namespace erpc {
 
 static constexpr double kWheelSlotWidthUs = .5;  ///< Duration per wheel slot
 static constexpr double kWheelHorizonUs =
-    1000000 * (kSessionCredits * CTransport::kMTU) / Timely::kMinRate;
+    1000000 * (kSessionCredits * Transport::kMTU) / Timely::kMinRate;
 
 // This ensures that packets for an sslot undergoing retransmission are rarely
 // in the wheel. This is recommended but not required.
@@ -70,7 +67,7 @@ static_assert(sizeof(wheel_bkt_t) == 64, "");
 
 struct timing_wheel_args_t {
   double freq_ghz;
-  HugeAlloc *huge_alloc;
+  STDAlloc *std_alloc;
 };
 
 class TimingWheel {
@@ -79,14 +76,13 @@ class TimingWheel {
       : freq_ghz(args.freq_ghz),
         wslot_width_tsc(us_to_cycles(kWheelSlotWidthUs, freq_ghz)),
         horizon_tsc(us_to_cycles(kWheelHorizonUs, freq_ghz)),
-        huge_alloc(args.huge_alloc),
-        bkt_pool(huge_alloc) {
+        std_alloc(args.std_alloc),
+        bkt_pool(args.std_alloc) {
     // wheel_buffer is leaked by the wheel, and deleted later with the allocator
-    Buffer wheel_buffer = huge_alloc->alloc_raw(
-        kWheelNumWslots * sizeof(wheel_bkt_t), DoRegister::kFalse);
+    Buffer wheel_buffer = std_alloc->alloc(
+        kWheelNumWslots * sizeof(wheel_bkt_t));
     rt_assert(wheel_buffer.buf != nullptr,
-              std::string("Failed to allocate wheel. ") +
-                  HugeAlloc::alloc_fail_help_str);
+              std::string("Failed to allocate wheel. "));
 
     size_t base_tsc = rdtsc();
     wheel = reinterpret_cast<wheel_bkt_t *>(wheel_buffer.buf);
@@ -211,7 +207,7 @@ class TimingWheel {
   const double freq_ghz;         ///< TSC freq, used only for us/tsc conversion
   const size_t wslot_width_tsc;  ///< Time-granularity in TSC units
   const size_t horizon_tsc;      ///< Horizon in TSC units
-  HugeAlloc *huge_alloc;
+  STDAlloc *std_alloc;
 
   wheel_bkt_t *wheel;
   size_t cur_wslot = 0;

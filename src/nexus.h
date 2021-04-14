@@ -12,15 +12,11 @@
 
 namespace erpc {
 
-// Forward declaration for friendship
-template <typename T>
-class Rpc;
-
 /**
  * @brief A per-process library object used for initializing eRPC
  */
 class Nexus {
-  friend class Rpc<CTransport>;
+  friend class Rpc;
 
   /**
    * @brief Initialize eRPC for this process

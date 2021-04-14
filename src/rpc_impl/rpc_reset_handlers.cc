@@ -6,8 +6,7 @@
 
 namespace erpc {
 
-template <class TTr>
-bool Rpc<TTr>::handle_reset_client_st(Session *session) {
+bool Rpc::handle_reset_client_st(Session *session) {
   assert(in_dispatch());
 
   char issue_msg[kMaxIssueMsgLen];
@@ -49,8 +48,7 @@ bool Rpc<TTr>::handle_reset_client_st(Session *session) {
   return true;
 }
 
-template <class TTr>
-bool Rpc<TTr>::handle_reset_server_st(Session *session) {
+bool Rpc::handle_reset_server_st(Session *session) {
   assert(in_dispatch());
   assert(session->is_server());
   session->state = SessionState::kResetInProgress;

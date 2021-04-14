@@ -2,8 +2,7 @@
 
 namespace erpc {
 
-template <class TTr>
-void Rpc<TTr>::run_event_loop_do_one_st() {
+void Rpc::run_event_loop_do_one_st() {
   assert(in_dispatch());
   dpath_stat_inc(dpath_stats.ev_loop_calls, 1);
 
@@ -35,8 +34,7 @@ void Rpc<TTr>::run_event_loop_do_one_st() {
   }
 }
 
-template <class TTr>
-void Rpc<TTr>::run_event_loop_timeout_st(size_t timeout_ms) {
+void Rpc::run_event_loop_timeout_st(size_t timeout_ms) {
   assert(in_dispatch());
 
   size_t timeout_tsc = ms_to_cycles(timeout_ms, freq_ghz);

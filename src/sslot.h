@@ -10,14 +10,11 @@ namespace erpc {
 class Session;
 class Nexus;
 
-template <typename T>
-class Rpc;
-
 /// Session slot metadata maintained for an RPC by both client and server
 class SSlot {
   friend class Session;
   friend class Nexus;
-  friend class Rpc<CTransport>;
+  friend class Rpc;
   friend class ReqHandle;
 
  public:

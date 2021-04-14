@@ -24,14 +24,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build)
 
-# DPDK may be needed for different reasons (e.g., the transport is DPDK, or
-# if the transport is not DPDK but the application needs DPDK libraries)
-set(DPDK_NEEDED "false")
-
-# Options exposed to the user
-set(TRANSPORT "dpdk" CACHE STRING "Datapath transport (infiniband/raw/dpdk)")
-option(ROCE "Use RoCE if TRANSPORT is infiniband" OFF)
-option(AZURE "Configure DPDK for Azure if TRANSPORT is dpdk" OFF)
 option(PERF "Compile for performance" ON)
 set(PGO "none" CACHE STRING "Profile-guided optimization (generate/use/none)")
 set(LOG_LEVEL "warn" CACHE STRING "Logging level (none/error/warn/info/reorder/trace/cc)") 
@@ -126,59 +118,8 @@ set(SOURCES
   src/rpc_impl/rpc_sm_api.cc
   src/rpc_impl/rpc_sm_helpers.cc
   src/transport_impl/transport.cc
-  src/transport_impl/dpdk/dpdk_transport.cc
-  src/transport_impl/dpdk/dpdk_transport_datapath.cc
-  src/transport_impl/infiniband/ib_transport.cc
-  src/transport_impl/infiniband/ib_transport_datapath.cc
-  src/transport_impl/raw/raw_transport.cc
-  src/transport_impl/raw/raw_transport_datapath.cc
-  src/util/huge_alloc.cc
   src/util/externs.cc
   src/util/tls_registry.cc)
-
-# Transport-specific. Mellanox OFED drivers are the best choice for raw and
-# infiniband, but they do not play well with DPDK. So we compile only one
-# transport. Other transports are exluded using preprocessor macros.
-string(TOUPPER ${TRANSPORT} DEFINE_TRANSPORT)
-add_definitions(-DERPC_${DEFINE_TRANSPORT}=true)
-message(STATUS "Selected transport = ${TRANSPORT}.")
-set(CONFIG_IS_ROCE false)
-
-if(TRANSPORT STREQUAL "dpdk")
-  set(CONFIG_TRANSPORT "DpdkTransport")
-  set(CONFIG_HEADROOM 40)
-  set(DPDK_NEEDED "true") # We'll resolve DPDK later
-
-  if(AZURE)
-    set(CONFIG_IS_AZURE true)
-    message(STATUS "Configuring DPDK for Azure")
-  else()
-    set(CONFIG_IS_AZURE false)
-    message(STATUS "Configuring DPDK for bare-metal cluster (i.e., not Azure)")
-  endif()
-else()
-  find_library(IBVERBS_LIB ibverbs)
-  if(NOT IBVERBS_LIB)
-    message(FATAL_ERROR "ibverbs library not found")
-  endif()
-
-  set(LIBRARIES ${LIBRARIES} ibverbs)
-  if(TRANSPORT STREQUAL "raw")
-    set(CONFIG_TRANSPORT "RawTransport")
-    set(CONFIG_HEADROOM 40)
-  elseif(TRANSPORT STREQUAL "infiniband")
-    set(CONFIG_TRANSPORT "IBTransport")
-    if(ROCE)
-      set(CONFIG_HEADROOM 40)
-      set(CONFIG_IS_ROCE true)
-    else()
-      set(CONFIG_HEADROOM 0)
-      set(CONFIG_IS_ROCE false)
-    endif()
-  endif()
-endif()
-
-configure_file(src/config.h.in src/config.h)
 
 # MICA sources
 set(MICA_SOURCES
@@ -206,16 +147,8 @@ set(PROTOCOL_TESTS
   rpc_rfr_test
   rpc_kick_test)
 
-if(TRANSPORT STREQUAL "raw")
-  set(TRANSPORT_TESTS
-    raw_transport_test)
-endif()
-
 # These are not run using ctest
 set(UTIL_TESTS
-  huge_alloc_test
-  hugepage_caching_virt2phy_test
-  timing_wheel_test
   heartbeat_mgr_test
   rand_test
   misc_test
@@ -225,32 +158,6 @@ set(UTIL_TESTS
 
 # Compile the library
 add_library(erpc ${SOURCES})
-
-# Compile the tests
-if(TESTING)
-  foreach(test_name IN LISTS CLIENT_TESTS)
-    add_executable(${test_name} tests/client_tests/${test_name}.cc)
-    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
-    add_test(NAME ${test_name} COMMAND ${test_name})
-  endforeach()
-
-  foreach(test_name IN LISTS PROTOCOL_TESTS)
-    add_executable(${test_name} tests/protocol_tests/${test_name}.cc)
-    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
-    add_test(NAME ${test_name} COMMAND ${test_name})
-  endforeach()
-
-  foreach(test_name IN LISTS TRANSPORT_TESTS)
-    add_executable(${test_name} tests/transport_tests/${test_name}.cc)
-    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
-    add_test(NAME ${test_name} COMMAND ${test_name})
-  endforeach()
-
-  foreach(test_name IN LISTS UTIL_TESTS)
-    add_executable(${test_name} tests/util_tests/${test_name}.cc)
-    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
-  endforeach()
-endif()
 
 # The app to compile. Only one app is compiled to reduce compile time.
 if(EXISTS "${CMAKE_SOURCE_DIR}/scripts/autorun_app_file")
@@ -305,32 +212,35 @@ elseif(APP STREQUAL "log")
   set(LIBRARIES ${LIBRARIES} ${PMEM})
 endif()
 
-if(DPDK_NEEDED STREQUAL "true")
-  message(STATUS "DPDK needed to build eRPC")
-  find_library(DPDK_LIB dpdk)
-  if(NOT DPDK_LIB)
-    message(FATAL_ERROR "DPDK library not found")
-  endif()
-
-  set(LIBRARIES ${LIBRARIES} -Wl,--whole-archive dpdk -Wl,--no-whole-archive numa dl ibverbs mlx4 mlx5)
-
-  # DPDK include directory. Locating rte_config.h does not work on some systems.
-  # Example: it may be kept in /usr/include/x86_64-linux-gnu/, and symlinked
-  # from the real DPDK include directory (/usr/include/dpdk/).
-  find_path(DPDK_INCLUDE_DIR NAMES rte_ethdev.h PATH_SUFFIXES dpdk)
-  if (DPDK_INCLUDE_DIR)
-    message(STATUS "DPDK include directory = ${DPDK_INCLUDE_DIR}")
-  else()
-    message(FATAL_ERROR "DPDK include directory not found")
-  endif()
-  include_directories(SYSTEM ${DPDK_INCLUDE_DIR})
-else()
-  message(STATUS "DPDK not needed to build eRPC")
-endif()
-
 # Using link-time optimization sometimes requires building with sources instead
 # of liberpc. See the hello world example's Makefile for an example of
 # compiling with liberpc.
 add_executable(${APP} apps/${APP}/${APP}.cc ${APP_ADDITIONAL_SOURCES} ${SOURCES})
 target_compile_options(${APP} PRIVATE "-flto")
 target_link_libraries(${APP} ${GTEST_LIBRARIES} ${LIBRARIES})
+
+# Compile the tests
+if(TESTING)
+  foreach(test_name IN LISTS CLIENT_TESTS)
+    add_executable(${test_name} tests/client_tests/${test_name}.cc)
+    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
+    add_test(NAME ${test_name} COMMAND ${test_name})
+  endforeach()
+
+  foreach(test_name IN LISTS PROTOCOL_TESTS)
+    add_executable(${test_name} tests/protocol_tests/${test_name}.cc)
+    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
+    add_test(NAME ${test_name} COMMAND ${test_name})
+  endforeach()
+
+  foreach(test_name IN LISTS TRANSPORT_TESTS)
+    add_executable(${test_name} tests/transport_tests/${test_name}.cc)
+    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
+    add_test(NAME ${test_name} COMMAND ${test_name})
+  endforeach()
+
+  foreach(test_name IN LISTS UTIL_TESTS)
+    add_executable(${test_name} tests/util_tests/${test_name}.cc)
+    target_link_libraries(${test_name} erpc ${GTEST_LIBRARIES} ${LIBRARIES})
+  endforeach()
+endif()

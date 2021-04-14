@@ -38,8 +38,8 @@ void sm_handler(int session_num, SmEventType sm_event_type,
 void simple_disconnect(Nexus *nexus, size_t) {
   // We're testing session connection, so can't use client_connect_sessions
   AppContext c;
-  c.rpc = new Rpc<CTransport>(nexus, static_cast<void *>(&c), kTestClientRpcId,
-                              &sm_handler, kTestClientPhyPort);
+  c.rpc = new Rpc(nexus, static_cast<void *>(&c), kTestClientRpcId,
+                              &sm_handler);
   auto *rpc = c.rpc;
 
   // Create the session
@@ -83,8 +83,8 @@ TEST(Base, SimpleDisconnect) {
 void disconnect_multi(Nexus *nexus, size_t) {
   // We're testing session connection, so can't use client_connect_sessions()
   AppContext c;
-  c.rpc = new Rpc<CTransport>(nexus, static_cast<void *>(&c), kTestClientRpcId,
-                              &sm_handler, kTestClientPhyPort);
+  c.rpc = new Rpc(nexus, static_cast<void *>(&c), kTestClientRpcId,
+                              &sm_handler);
   auto *rpc = c.rpc;
 
   // The number of sessions we can create before running out of ring buffers
@@ -136,8 +136,8 @@ TEST(Base, DisconnectMulti) {
 void disconnect_remote_error(Nexus *nexus, size_t) {
   // We're testing session connection, so can't use client_connect_sessions
   AppContext c;
-  c.rpc = new Rpc<CTransport>(nexus, static_cast<void *>(&c), kTestClientRpcId,
-                              &sm_handler, kTestClientPhyPort);
+  c.rpc = new Rpc(nexus, static_cast<void *>(&c), kTestClientRpcId,
+                              &sm_handler);
   auto *rpc = c.rpc;
 
   // Create a session that uses an invalid remote port
@@ -168,8 +168,8 @@ TEST(Base, DisconnectRemoteError) {
 void disconnect_local_error(Nexus *nexus, size_t) {
   // We're testing session connection, so can't use client_connect_sessions
   AppContext c;
-  c.rpc = new Rpc<CTransport>(nexus, static_cast<void *>(&c), kTestClientRpcId,
-                              &sm_handler, kTestClientPhyPort);
+  c.rpc = new Rpc(nexus, static_cast<void *>(&c), kTestClientRpcId,
+                              &sm_handler);
   auto *rpc = c.rpc;
 
   // Force Rpc to fail remote routing info resolution at client

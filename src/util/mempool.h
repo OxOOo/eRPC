@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common.h"
-#include "util/huge_alloc.h"
+#include "util/std_alloc.h"
 
 namespace erpc {
 
@@ -10,14 +10,14 @@ namespace erpc {
 template <class T>
 class MemPool {
   size_t num_to_alloc = MB(2) / sizeof(T);  // Start with 2 MB
-  HugeAlloc *huge_alloc;
+  STDAlloc *std_alloc;
   std::vector<T *> pool;
 
   void extend_pool() {
     size_t alloc_sz = sizeof(T) * num_to_alloc;
 
     // alloc_raw()'s result is leaked
-    Buffer b = huge_alloc->alloc_raw(alloc_sz, DoRegister::kFalse);
+    Buffer b = std_alloc->alloc(alloc_sz);
     rt_assert(b.buf != nullptr, "Hugepage allocation failed");
 
     for (size_t i = 0; i < num_to_alloc; i++) {
@@ -36,7 +36,7 @@ class MemPool {
 
   void free(T *t) { pool.push_back(t); }
 
-  MemPool(HugeAlloc *huge_alloc) : huge_alloc(huge_alloc) {}
+  MemPool(STDAlloc *std_alloc) : std_alloc(std_alloc) {}
 
   /// Cleanup is done when owner deletes huge_alloc
   ~MemPool() {}

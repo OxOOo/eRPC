@@ -15,13 +15,6 @@ static constexpr uint8_t kTestClientRpcId = 100;
 static constexpr uint8_t kTestServerRpcId = 200;
 static constexpr uint8_t kTestReqType = 3;
 
-// Running unit tests with DPDK requires two ports
-static constexpr uint8_t kTestClientPhyPort = 0;
-#ifdef DPDK
-static constexpr uint8_t kTestServerPhyPort = kTestClientPhyPort + 1;
-#else
-static constexpr uint8_t kTestServerPhyPort = kTestClientPhyPort;
-#endif
 static constexpr size_t kTestNumaNode = 0;
 
 // Shared between client and server thread
@@ -38,7 +31,7 @@ bool server_check_all_disconnected = true;
 class BasicAppContext {
  public:
   bool is_client;
-  Rpc<CTransport> *rpc = nullptr;
+  Rpc *rpc = nullptr;
   int *session_num_arr = nullptr;  ///< Sessions created as client
 
   size_t num_sm_resps = 0;   ///< Number of SM responses
@@ -65,7 +58,7 @@ enum class ConnectServers : bool { kTrue, kFalse };
 /// Pick a random non-zero message size, with an approximately X% chance of the
 /// message fitting in one packet. Other messages have a 80% chance of fitting
 /// in 10 packets. This reduces test running time.
-size_t get_rand_msg_size(FastRand *fast_rand, const Rpc<CTransport> *rpc) {
+size_t get_rand_msg_size(FastRand *fast_rand, const Rpc *rpc) {
   // Hack to return some constant data:
   // if (fast_rand != nullptr) return 3000;
 
@@ -90,7 +83,7 @@ size_t get_rand_msg_size(FastRand *fast_rand, const Rpc<CTransport> *rpc) {
 
 /// Similar to get_rand_msg_size(), but the returned size is at least
 /// min_msg_size
-size_t get_rand_msg_size(FastRand *fast_rand, const Rpc<CTransport> *rpc,
+size_t get_rand_msg_size(FastRand *fast_rand, const Rpc *rpc,
                          size_t min_msg_size) {
   assert(min_msg_size <= rpc->get_max_msg_size() * .9);  // Too slow otherwise
 
@@ -145,8 +138,7 @@ void basic_server_thread_func(Nexus *nexus, uint8_t rpc_id,
   BasicAppContext c;
   c.is_client = false;
 
-  Rpc<CTransport> rpc(nexus, static_cast<void *>(&c), rpc_id, sm_handler,
-                      kTestServerPhyPort);
+  Rpc rpc(nexus, static_cast<void *>(&c), rpc_id, sm_handler);
   if (kTesting) rpc.fault_inject_set_pkt_drop_prob_st(pkt_loss_prob);
 
   c.rpc = &rpc;
@@ -293,8 +285,8 @@ void client_connect_sessions(Nexus *nexus, BasicAppContext &c,
   while (!all_servers_ready) usleep(1);
 
   c.is_client = true;
-  c.rpc = new Rpc<CTransport>(nexus, static_cast<void *>(&c), kTestClientRpcId,
-                              sm_handler, kTestClientPhyPort);
+  c.rpc = new Rpc(nexus, static_cast<void *>(&c), kTestClientRpcId,
+                              sm_handler);
 
   // Connect the sessions
   c.session_num_arr = new int[num_sessions];

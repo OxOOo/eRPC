@@ -8,8 +8,7 @@ namespace erpc {
 
 // We need to handle all types of errors in remote arguments that the client can
 // make when calling create_session(), which cannot check for such errors.
-template <class TTr>
-void Rpc<TTr>::handle_connect_req_st(const SmPkt &sm_pkt) {
+void Rpc::handle_connect_req_st(const SmPkt &sm_pkt) {
   assert(in_dispatch());
   assert(sm_pkt.pkt_type == SmPktType::kConnectReq &&
          sm_pkt.server.rpc_id == rpc_id);
@@ -40,37 +39,10 @@ void Rpc<TTr>::handle_connect_req_st(const SmPkt &sm_pkt) {
 
   // If we're here, this is the first time we're receiving this connect request
 
-  // Check that the transport matches
-  if (sm_pkt.server.transport_type != transport->transport_type) {
-    ERPC_WARN("%s: Invalid transport %s. Sending response.\n", issue_msg,
-              Transport::get_name(sm_pkt.server.transport_type).c_str());
-    sm_pkt_udp_tx_st(sm_construct_resp(sm_pkt, SmErrType::kInvalidTransport));
-    return;
-  }
-
   // Check if we are allowed to create another session
   if (!have_ring_entries()) {
     ERPC_WARN("%s: Ring buffers exhausted. Sending response.\n", issue_msg);
     sm_pkt_udp_tx_st(sm_construct_resp(sm_pkt, SmErrType::kRingExhausted));
-    return;
-  }
-
-  // Try to resolve the client-provided routing info. If session creation
-  // succeeds, we'll copy it to the server's session endpoint.
-  Transport::RoutingInfo client_rinfo = sm_pkt.client.routing_info;
-  bool resolve_success;
-  if (kTesting && faults.fail_resolve_rinfo) {
-    resolve_success = false;
-  } else {
-    resolve_success = transport->resolve_remote_routing_info(&client_rinfo);
-  }
-
-  if (!resolve_success) {
-    std::string routing_info_str = TTr::routing_info_str(&client_rinfo);
-    ERPC_WARN("%s: Unable to resolve routing info %s. Sending response.\n",
-              issue_msg, routing_info_str.c_str());
-    sm_pkt_udp_tx_st(
-        sm_construct_resp(sm_pkt, SmErrType::kRoutingResolutionFailure));
     return;
   }
 
@@ -101,12 +73,11 @@ void Rpc<TTr>::handle_connect_req_st(const SmPkt &sm_pkt) {
   // Fill-in the server endpoint
   session->server = sm_pkt.server;
   session->server.session_num = session_vec.size();
-  transport->fill_local_routing_info(&session->server.routing_info);
   conn_req_token_map[session->uniq_token] = session->server.session_num;
 
   // Fill-in the client endpoint
   session->client = sm_pkt.client;
-  session->client.routing_info = client_rinfo;
+  session->client.routing_info = Transport::make_routing_info(sm_pkt.client.hostname, sm_pkt.client.data_udp_port);
 
   session->local_session_num = session->server.session_num;
   session->remote_session_num = session->client.session_num;
@@ -123,8 +94,7 @@ void Rpc<TTr>::handle_connect_req_st(const SmPkt &sm_pkt) {
   return;
 }
 
-template <class TTr>
-void Rpc<TTr>::handle_connect_resp_st(const SmPkt &sm_pkt) {
+void Rpc::handle_connect_resp_st(const SmPkt &sm_pkt) {
   assert(in_dispatch());
   assert(sm_pkt.pkt_type == SmPktType::kConnectResp &&
          sm_pkt.client.rpc_id == rpc_id);
@@ -179,32 +149,10 @@ void Rpc<TTr>::handle_connect_resp_st(const SmPkt &sm_pkt) {
 
   // If we are here, the server has created a session endpoint
 
-  // Try to resolve the server-provided routing info
-  Transport::RoutingInfo srv_routing_info = sm_pkt.server.routing_info;
-  bool resolve_success;
-  if (kTesting && faults.fail_resolve_rinfo) {
-    resolve_success = false;  // Inject fault
-  } else {
-    resolve_success = transport->resolve_remote_routing_info(&srv_routing_info);
-  }
-
-  if (!resolve_success) {
-    // Free server resources by disconnecting. No connected (with error)
-    // callback will be invoked.
-    ERPC_WARN("%s: Failed to resolve server routing info. Disconnecting.\n",
-              issue_msg);
-
-    session->server = sm_pkt.server;  // Needed for disconnect response later
-
-    // Do what destroy_session() does with a connected session
-    session->state = SessionState::kDisconnectInProgress;
-    send_sm_req_st(session);
-    return;
-  }
-
   // Save server endpoint metadata
+  Transport::RoutingInfo rrouting_info = session->server.routing_info;
   session->server = sm_pkt.server;  // This fills most fields
-  session->server.routing_info = srv_routing_info;
+  session->server.routing_info = rrouting_info;
   session->remote_session_num = session->server.session_num;
   session->state = SessionState::kConnected;
 

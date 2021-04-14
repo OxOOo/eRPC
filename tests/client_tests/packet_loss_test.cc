@@ -75,7 +75,7 @@ void generic_test_func(Nexus *nexus, size_t) {
   AppContext c;
   client_connect_sessions(nexus, c, 1, basic_sm_handler);  // 1 session
 
-  Rpc<CTransport> *rpc = c.rpc;
+  Rpc *rpc = c.rpc;
   rpc->fault_inject_set_pkt_drop_prob_st(kPktDropProb);
 
   // Pre-create MsgBuffers so we can test reuse and resizing

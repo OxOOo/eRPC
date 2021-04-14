@@ -67,7 +67,6 @@ TEST_F(RpcSmTest, handle_connect_req_st_errors) {
 
   // Transport type mismatch
   SmPkt ttm_conn_req = conn_req;
-  ttm_conn_req.server.transport_type = TransportType::kInvalid;
   rpc->handle_connect_req_st(ttm_conn_req);
   common_check(0, SmPktType::kConnectResp, SmErrType::kInvalidTransport);
 
@@ -100,7 +99,7 @@ TEST_F(RpcSmTest, handle_connect_req_st_errors) {
   // We hoard hugepages in two steps. First in large chunks for speed, then
   // until MTU-sized pages cannot be allocated.
   while (true) {
-    Buffer buffer = rpc->huge_alloc->alloc_raw(MB(16), DoRegister::kFalse);
+    Buffer buffer = rpc->std_alloc->alloc(MB(16));
     if (buffer.buf == nullptr) break;
   }
 
@@ -109,10 +108,8 @@ TEST_F(RpcSmTest, handle_connect_req_st_errors) {
     if (msgbuf.buf == nullptr) break;
   }
 
-  size_t initial_alloc = rpc->huge_alloc->get_stat_user_alloc_tot();
   rpc->handle_connect_req_st(conn_req);
   common_check(0, SmPktType::kConnectResp, SmErrType::kOutOfMemory);
-  ASSERT_EQ(initial_alloc, rpc->huge_alloc->get_stat_user_alloc_tot());
   // No more tests here because all hugepages are consumed
 }
 
@@ -194,11 +191,9 @@ TEST_F(RpcSmTest, handle_disconnect_req_st) {
 
   // Process first disconnect request
   // Session is destroyed, resources released, & response sent.
-  const size_t initial_alloc = rpc->huge_alloc->get_stat_user_alloc_tot();
   rpc->handle_disconnect_req_st(disc_req);
   common_check(1, SmPktType::kDisconnectResp, SmErrType::kNoError);
   ASSERT_EQ(rpc->session_vec[0], nullptr);
-  ASSERT_LT(rpc->huge_alloc->get_stat_user_alloc_tot(), initial_alloc);
   ASSERT_TRUE(rpc->ring_entries_available == rpc->transport->kNumRxRingEntries);
 
   // Process disconnect request again. Response is re-sent.

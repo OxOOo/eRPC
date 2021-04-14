@@ -6,8 +6,7 @@ namespace erpc {
 
 // The cont_etid parameter is passed only when the event loop processes the
 // background threads' queue of enqueue_request calls.
-template <class TTr>
-void Rpc<TTr>::enqueue_request(int session_num, uint8_t req_type,
+void Rpc::enqueue_request(int session_num, uint8_t req_type,
                                MsgBuffer *req_msgbuf, MsgBuffer *resp_msgbuf,
                                erpc_cont_func_t cont_func, void *tag,
                                size_t cont_etid) {
@@ -74,8 +73,7 @@ void Rpc<TTr>::enqueue_request(int session_num, uint8_t req_type,
   }
 }
 
-template <class TTr>
-void Rpc<TTr>::process_small_req_st(SSlot *sslot, pkthdr_t *pkthdr) {
+void Rpc::process_small_req_st(SSlot *sslot, pkthdr_t *pkthdr) {
   assert(in_dispatch());
 
   // Handle reordering
@@ -151,8 +149,7 @@ void Rpc<TTr>::process_small_req_st(SSlot *sslot, pkthdr_t *pkthdr) {
   }
 }
 
-template <class TTr>
-void Rpc<TTr>::process_large_req_one_st(SSlot *sslot, const pkthdr_t *pkthdr) {
+void Rpc::process_large_req_one_st(SSlot *sslot, const pkthdr_t *pkthdr) {
   assert(in_dispatch());
 
   // Handle reordering

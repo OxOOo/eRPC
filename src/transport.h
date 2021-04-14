@@ -5,6 +5,9 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <sys/socket.h>
+#include <stdint.h>
 #include "common.h"
 #include "msg_buffer.h"
 #include "pkthdr.h"
@@ -13,42 +16,32 @@
 
 namespace erpc {
 
-class HugeAlloc;  // Forward declaration: HugeAlloc needs MemRegInfo
-
-/// The avialable transport backend implementations. RoCE transport is
-/// implemented through minor modifications to InfiniBand transport via the
-/// kIsRoCE config parameter.
-enum class TransportType { kInfiniBand, kRaw, kDPDK, kInvalid };
+class STDAlloc;  // Forward declaration: HugeAlloc needs MemRegInfo
 
 /// Generic unreliable transport
 class Transport {
  public:
+  static constexpr size_t kMTU = 1024;
+
+  /// Maximum data bytes (i.e., non-header) in a packet
+  static constexpr size_t kMaxDataPerPkt = (kMTU - sizeof(pkthdr_t));
+
+  // rx_ring是一个循环队列，第一次收到10个包会放在0~9，之后放10
   static constexpr size_t kNumRxRingEntries = 4096;
-  static_assert(is_power_of_two<size_t>(kNumRxRingEntries), "");
 
-  static constexpr size_t kMaxRoutingInfoSize = 48;  ///< Space for routing info
-  static constexpr size_t kMaxMemRegInfoSize = 64;   ///< Space for mem reg info
+  // 好象是批发传输的包数量
+  static constexpr size_t kPostlist = 32;
 
-  /**
-   * @brief Generic struct to store routing info for any transport.
-   *
-   * This can contain both cluster-wide valid members (e.g., {LID, QPN}), and
-   * members that are only locally valid (e.g., a pointer to \p ibv_ah).
-   */
+  // 控制信息(CR/RFR)的内存池大小
+  static constexpr size_t kCtrlBufferSize = 64;
+  static_assert(kCtrlBufferSize >= kPostlist, "kCtrlBufferSize too small");
+
+ public:
+  // Info about dest
   struct RoutingInfo {
-    uint8_t buf[kMaxRoutingInfoSize];
+    uint8_t buf[64]; // ai_addrlen:sizeof(socklen_t)
   };
-
-  /// Generic struct to store memory registration info for any transport.
-  struct MemRegInfo {
-    void* transport_mr;  ///< The transport-specific memory region (eg, ibv_mr)
-    uint32_t lkey;       ///< The lkey of the memory region
-
-    MemRegInfo(void* transport_mr, uint32_t lkey)
-        : transport_mr(transport_mr), lkey(lkey) {}
-
-    MemRegInfo() : transport_mr(nullptr), lkey(0xffffffff) {}
-  };
+  static RoutingInfo make_routing_info(std::string hostname, uint16_t port);
 
   /// Info about a packet to transmit
   struct tx_burst_item_t {
@@ -59,20 +52,6 @@ class Transport {
     size_t* tx_ts = nullptr;  ///< TX timestamp, only for congestion control
     bool drop;                ///< Drop this packet. Used only with kTesting.
   };
-
-  /// Generic types for memory registration and deregistration functions.
-  typedef std::function<MemRegInfo(void*, size_t)> reg_mr_func_t;
-  typedef std::function<void(MemRegInfo)> dereg_mr_func_t;
-
-  static std::string get_name(TransportType transport_type) {
-    switch (transport_type) {
-      case TransportType::kInfiniBand: return "[InfiniBand]";
-      case TransportType::kRaw: return "[Raw Ethernet]";
-      case TransportType::kDPDK: return "[DPDK]";
-      case TransportType::kInvalid: return "[Invalid]";
-    }
-    throw std::runtime_error("eRPC: Invalid transport");
-  }
 
   /**
    * @brief Partially construct the transport object without using eRPC's
@@ -86,20 +65,9 @@ class Transport {
    *
    * @throw runtime_error if creation fails
    */
-  Transport(TransportType, uint8_t rpc_id, uint8_t phy_port, size_t numa_node,
-            FILE* trace_file);
+  Transport(uint16_t data_udp_port, uint8_t rpc_id, size_t numa_node, FILE* trace_file);
 
-  /**
-   * @brief Initialize transport structures that require hugepages, and
-   * fill/save the RX ring.
-   *
-   * @throw runtime_error if initialization fails. This exception is caught
-   * in the parent Rpc, which then deletes \p huge_alloc so we don't need to.
-   */
-  void init_hugepage_structures(HugeAlloc* huge_alloc, uint8_t** rx_ring);
-
-  /// Initialize the memory registration and deregistratin functions
-  void init_mem_reg_funcs();
+  void init_mem(uint8_t** rx_ring);
 
   ~Transport();
 
@@ -132,45 +100,27 @@ class Transport {
    */
   void post_recvs(size_t num_recvs);
 
-  /// Fill-in local routing information
-  void fill_local_routing_info(RoutingInfo* routing_info) const;
-
-  /**
-   * @brief Try to resolve routing information received from a remote host. The
-   * remote, cluster-wide meaningful info is available in \p routing_info. The
-   * resolved, locally-meaningful info is also stored in \p routing_info.
-   *
-   * Overwriting the original contents of \p routing_info is allowed.
-   *
-   * For example, for InfiniBand, this involves creating the address handle
-   * using the remote port LID.
-   *
-   * @return True if resolution succeeds, false otherwise.
-   */
-  bool resolve_remote_routing_info(RoutingInfo* routing_info) const;
-
   /// Return the link bandwidth (bytes per second)
-  size_t get_bandwidth() const;
+  size_t get_bandwidth() const { return 1 << 25; } // FIXME
 
-  /// Return a string representation of \p routing_info
-  static std::string routing_info_str(RoutingInfo* routing_info);
-
-  // Members that are needed by all transports. Constructor args first.
-  const TransportType transport_type;
+  // Constructor args first.
+  const uint16_t data_udp_port;   ///< UDP port for datapath
   const uint8_t rpc_id;    ///< The parent Rpc's ID
-  const uint8_t phy_port;  ///< 0-based index among active fabric ports
   const size_t numa_node;  ///< The NUMA node of the parent Nexus
 
-  // Other members
-  reg_mr_func_t reg_mr_func;      ///< The memory registration function
-  dereg_mr_func_t dereg_mr_func;  ///< The memory deregistration function
-
   // Members initialized after the hugepage allocator is provided
-  HugeAlloc* huge_alloc;  ///< The parent Rpc's hugepage allocator
   FILE* trace_file;       ///< The parent Rpc's high-verbosity log file
 
   struct {
     size_t tx_flush_count = 0;  ///< Number of times tx_flush() has been called
   } testing;
+
+private:
+  std::allocator<uint8_t> allocator;
+  uint8_t** rx_ring;
+  size_t rx_ring_head, rx_ring_tail;  ///< Current unused RX ring buffer
+  int sock_fd;
+  uint8_t* send_buf;
+  uint8_t* recv_buf;
 };
 }  // namespace erpc

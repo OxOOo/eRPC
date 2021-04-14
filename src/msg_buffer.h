@@ -10,9 +10,6 @@ namespace erpc {
 // Forward declarations for friendship
 class Session;
 
-template <typename T>
-class Rpc;
-
 /**
  * @brief Applications store request and response messages in hugepage-backed
  * buffers called message buffers. These buffers are registered with the NIC,
@@ -26,8 +23,8 @@ class Rpc;
  * A message buffer is invalid if its #buf pointer is null.
  */
 class MsgBuffer {
-  friend class CTransport;
-  friend class Rpc<CTransport>;
+  friend class Transport;
+  friend class Rpc;
   friend class Session;
 
  private:
@@ -40,9 +37,7 @@ class MsgBuffer {
   /// get_pkthdr_0() is more efficient for retrieving the zeroth header.
   inline pkthdr_t *get_pkthdr_n(size_t n) const {
     if (unlikely(n == 0)) return get_pkthdr_0();
-    return reinterpret_cast<pkthdr_t *>(
-        buf + round_up<sizeof(size_t)>(max_data_size) +
-        (n - 1) * sizeof(pkthdr_t));
+    return reinterpret_cast<pkthdr_t *>(buf + max_data_size + (n - 1) * sizeof(pkthdr_t));
   }
 
   std::string get_pkthdr_str(size_t pkt_idx) const {
@@ -90,16 +85,11 @@ class MsgBuffer {
     assert(buffer.buf != nullptr);  // buffer must be valid
     // data_size can be 0
     assert(max_num_pkts >= 1);
-    assert(buffer.class_size >=
+    assert(buffer.size >=
            max_data_size + max_num_pkts * sizeof(pkthdr_t));
 
     pkthdr_t *pkthdr_0 = get_pkthdr_0();
     pkthdr_0->magic = kPktHdrMagic;
-
-    // UDP checksum for raw Ethernet. Useless for other transports.
-    static_assert(sizeof(pkthdr_t::headroom) == kHeadroom + 2, "");
-    pkthdr_0->headroom[kHeadroom] = 0;
-    pkthdr_0->headroom[kHeadroom + 1] = 0;
   }
 
   /// Construct a single-packet "fake" MsgBuffer using a received packet,

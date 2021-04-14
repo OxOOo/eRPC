@@ -7,8 +7,7 @@ namespace erpc {
 // which point the event loop buries the request MsgBuffer.
 //
 // So sslot->rx_msgbuf may or may not be valid at this point.
-template <class TTr>
-void Rpc<TTr>::enqueue_response(ReqHandle *req_handle, MsgBuffer *resp_msgbuf) {
+void Rpc::enqueue_response(ReqHandle *req_handle, MsgBuffer *resp_msgbuf) {
   // When called from a background thread, enqueue to the foreground thread
   if (unlikely(!in_dispatch())) {
     bg_queues._enqueue_response.unlocked_push(
@@ -67,8 +66,7 @@ void Rpc<TTr>::enqueue_response(ReqHandle *req_handle, MsgBuffer *resp_msgbuf) {
   enqueue_pkt_tx_burst_st(sslot, 0, nullptr);  // 0 = packet index, not pkt_num
 }
 
-template <class TTr>
-void Rpc<TTr>::process_resp_one_st(SSlot *sslot, const pkthdr_t *pkthdr,
+void Rpc::process_resp_one_st(SSlot *sslot, const pkthdr_t *pkthdr,
                                    size_t rx_tsc) {
   assert(in_dispatch());
   assert(pkthdr->req_num <= sslot->cur_req_num);
@@ -94,14 +92,11 @@ void Rpc<TTr>::process_resp_one_st(SSlot *sslot, const pkthdr_t *pkthdr,
   ci.progress_tsc = ev_loop_tsc;
 
   // Special handling for single-packet responses
-  if (likely(pkthdr->msg_size <= TTr::kMaxDataPerPkt)) {
+  if (likely(pkthdr->msg_size <= Transport::kMaxDataPerPkt)) {
     resize_msg_buffer(resp_msgbuf, pkthdr->msg_size);
 
-    // Copy eRPC header and data (but not Transport headroom). The eRPC header
-    // will be needed (e.g., to determine the request type) if the continuation
-    // runs in a background thread.
-    memcpy(resp_msgbuf->get_pkthdr_0()->ehdrptr(), pkthdr->ehdrptr(),
-           pkthdr->msg_size + sizeof(pkthdr_t) - kHeadroom);
+    // Copy eRPC header and data.
+    memcpy(resp_msgbuf->get_pkthdr_0(), pkthdr, pkthdr->msg_size + sizeof(pkthdr_t));
 
     // Fall through to invoke continuation
   } else {
@@ -111,8 +106,7 @@ void Rpc<TTr>::process_resp_one_st(SSlot *sslot, const pkthdr_t *pkthdr,
     if (pkthdr->pkt_num == req_msgbuf->num_pkts - 1) {
       // This is the first response packet. Size the response and copy header.
       resize_msg_buffer(resp_msgbuf, pkthdr->msg_size);
-      memcpy(resp_msgbuf->get_pkthdr_0()->ehdrptr(), pkthdr->ehdrptr(),
-             sizeof(pkthdr_t) - kHeadroom);
+      memcpy(resp_msgbuf->get_pkthdr_0(), pkthdr, sizeof(pkthdr_t));
     }
 
     // Transmit remaining RFRs before response memcpy. We have credits.

@@ -2,13 +2,12 @@
 
 namespace erpc {
 
-template <class TTr>
-void Rpc<TTr>::enqueue_rfr_st(SSlot *sslot, const pkthdr_t *resp_pkthdr) {
+void Rpc::enqueue_rfr_st(SSlot *sslot, const pkthdr_t *resp_pkthdr) {
   assert(in_dispatch());
 
   MsgBuffer *ctrl_msgbuf = &ctrl_msgbufs[ctrl_msgbuf_head];
   ctrl_msgbuf_head++;
-  if (ctrl_msgbuf_head == 2 * TTr::kUnsigBatch) ctrl_msgbuf_head = 0;
+  if (ctrl_msgbuf_head == Transport::kCtrlBufferSize) ctrl_msgbuf_head = 0;
 
   // Fill in the RFR packet header. Avoid copying resp_pkthdr's headroom.
   pkthdr_t *rfr_pkthdr = ctrl_msgbuf->get_pkthdr_0();
@@ -25,8 +24,7 @@ void Rpc<TTr>::enqueue_rfr_st(SSlot *sslot, const pkthdr_t *resp_pkthdr) {
       &sslot->client_info.tx_ts[rfr_pkthdr->pkt_num % kSessionCredits]);
 }
 
-template <class TTr>
-void Rpc<TTr>::process_rfr_st(SSlot *sslot, const pkthdr_t *pkthdr) {
+void Rpc::process_rfr_st(SSlot *sslot, const pkthdr_t *pkthdr) {
   assert(in_dispatch());
   assert(!sslot->is_client);
   auto &si = sslot->server_info;

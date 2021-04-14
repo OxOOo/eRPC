@@ -16,7 +16,6 @@
 // These tests never run event loop, so SM pkts sent by Rpc have no consequence
 namespace erpc {
 
-static constexpr size_t kTestPhyPort = 0;
 static constexpr size_t kTestNumaNode = 0;
 static constexpr size_t kTestUniqToken = 42;
 static constexpr size_t kTestRpcId = 0;  // ID of the fixture's Rpc
@@ -46,28 +45,23 @@ class RpcTest : public ::testing::Test {
                              ReqFuncType::kForeground);
     nexus->kill_switch = true;  // Kill SM thread
 
-    rpc = new Rpc<CTransport>(nexus, nullptr, kTestRpcId, sm_handler,
-                              kTestPhyPort);
+    rpc = new Rpc(nexus, nullptr, kTestRpcId, sm_handler);
 
     rt_assert(rpc != nullptr, "Failed to create Rpc");
 
     pkthdr_tx_queue = &rpc->testing.pkthdr_tx_queue;
 
     // Init local endpoint
-    local_endpoint.transport_type = rpc->transport->transport_type;
     strcpy(local_endpoint.hostname, "localhost");
     local_endpoint.sm_udp_port = 31850;
     local_endpoint.rpc_id = kTestRpcId;
     local_endpoint.session_num = 0;
-    rpc->transport->fill_local_routing_info(&local_endpoint.routing_info);
 
     // Init remote endpoint. Reusing local routing info & hostname is fine.
-    remote_endpoint.transport_type = rpc->transport->transport_type;
     strcpy(remote_endpoint.hostname, "localhost");
     remote_endpoint.sm_udp_port = 31850;
     remote_endpoint.rpc_id = kTestRpcId + 1;
     remote_endpoint.session_num = 1;
-    rpc->transport->fill_local_routing_info(&remote_endpoint.routing_info);
 
     rpc->set_context(this);
   }
@@ -105,10 +99,6 @@ class RpcTest : public ::testing::Test {
     Session *session = rpc->session_vec.back();
     session->server.session_num = server.session_num;
 
-    auto &remote_rinfo = session->server.routing_info;
-    rt_assert(rpc->transport->resolve_remote_routing_info(&remote_rinfo),
-              "Failed to resolve server routing info");
-
     session->remote_session_num = session->server.session_num;
     session->state = SessionState::kConnected;
     session->client_info.cc.prev_desired_tx_tsc = rdtsc();
@@ -130,10 +120,6 @@ class RpcTest : public ::testing::Test {
           rpc->alloc_msg_buffer_or_die(rpc->transport->kMaxDataPerPkt);
     }
 
-    auto &remote_rinfo = session->client.routing_info;
-    rt_assert(rpc->transport->resolve_remote_routing_info(&remote_rinfo),
-              "Failed to resolve client routing info");
-
     session->local_session_num = session->server.session_num;
     session->remote_session_num = session->client.session_num;
 
@@ -150,7 +136,7 @@ class RpcTest : public ::testing::Test {
     return se;
   }
 
-  Rpc<CTransport> *rpc = nullptr;
+  Rpc *rpc = nullptr;
   FixedQueue<pkthdr_t, kSessionCredits> *pkthdr_tx_queue;
 
  private:

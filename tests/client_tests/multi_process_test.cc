@@ -22,7 +22,7 @@ void process_proxy_thread_func(size_t process_id, size_t num_processes) {
   nexus.register_req_func(kTestReqType, req_handler);
 
   BasicAppContext c;
-  Rpc<CTransport> rpc(&nexus, &c, 0, basic_sm_handler);
+  Rpc rpc(&nexus, &c, 0, basic_sm_handler);
   c.rpc = &rpc;
 
   // Barrier

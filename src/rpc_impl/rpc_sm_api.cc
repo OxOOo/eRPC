@@ -11,8 +11,7 @@ namespace erpc {
 
 // This function is not on the critical path and is exposed to the user,
 // so the args checking is always enabled.
-template <class TTr>
-int Rpc<TTr>::create_session_st(std::string remote_uri, uint8_t rem_rpc_id) {
+int Rpc::create_session_st(std::string remote_uri, uint8_t rem_rpc_id) {
   char issue_msg[kMaxIssueMsgLen];  // The basic issue message
   sprintf(issue_msg, "Rpc %u: create_session() failed. Issue", rpc_id);
 
@@ -52,20 +51,20 @@ int Rpc<TTr>::create_session_st(std::string remote_uri, uint8_t rem_rpc_id) {
   // Fill in client and server endpoint metadata. Commented server fields will
   // be filled when the connect response is received.
   SessionEndpoint &client_endpoint = session->client;
-  client_endpoint.transport_type = transport->transport_type;
   strcpy(client_endpoint.hostname, nexus->hostname.c_str());
   client_endpoint.sm_udp_port = nexus->sm_udp_port;
+  client_endpoint.data_udp_port = nexus->sm_udp_port + 1;
   client_endpoint.rpc_id = rpc_id;
   client_endpoint.session_num = session->local_session_num;
-  transport->fill_local_routing_info(&client_endpoint.routing_info);
+  // client_endpoint.routing_info = ??
 
   SessionEndpoint &server_endpoint = session->server;
-  server_endpoint.transport_type = transport->transport_type;
   strcpy(server_endpoint.hostname, rem_hostname.c_str());
   server_endpoint.sm_udp_port = rem_sm_udp_port;
+  server_endpoint.data_udp_port = rem_sm_udp_port + 1;
   server_endpoint.rpc_id = rem_rpc_id;
   // server_endpoint.session_num = ??
-  // server_endpoint.routing_info = ??
+  server_endpoint.routing_info = Transport::make_routing_info(rem_hostname, rem_sm_udp_port + 1);
 
   alloc_ring_entries();
   session_vec.push_back(session);  // Add to list of all sessions
@@ -74,8 +73,7 @@ int Rpc<TTr>::create_session_st(std::string remote_uri, uint8_t rem_rpc_id) {
   return client_endpoint.session_num;
 }
 
-template <class TTr>
-int Rpc<TTr>::destroy_session_st(int session_num) {
+int Rpc::destroy_session_st(int session_num) {
   char issue_msg[kMaxIssueMsgLen];  // The basic issue message
   sprintf(issue_msg, "Rpc %u, lsn %u: destroy_session() failed. Issue", rpc_id,
           session_num);
@@ -140,8 +138,7 @@ int Rpc<TTr>::destroy_session_st(int session_num) {
   }
 }
 
-template <class TTr>
-size_t Rpc<TTr>::num_active_sessions_st() {
+size_t Rpc::num_active_sessions_st() {
   assert(in_dispatch());
 
   size_t ret = 0;

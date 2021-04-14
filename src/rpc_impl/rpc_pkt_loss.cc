@@ -8,8 +8,7 @@ namespace erpc {
 
 // This handles both datapath and management packet loss. This is called
 // rarely, so no need to optimize heavily.
-template <class TTr>
-void Rpc<TTr>::pkt_loss_scan_st() {
+void Rpc::pkt_loss_scan_st() {
   assert(in_dispatch());
 
   // Datapath packet loss
@@ -79,8 +78,7 @@ void Rpc<TTr>::pkt_loss_scan_st() {
   }
 }
 
-template <class TTr>
-void Rpc<TTr>::pkt_loss_retransmit_st(SSlot *sslot) {
+void Rpc::pkt_loss_retransmit_st(SSlot *sslot) {
   assert(in_dispatch());
   assert(sslot->tx_msgbuf != nullptr);  // sslot has a valid request
 

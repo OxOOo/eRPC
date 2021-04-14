@@ -9,7 +9,7 @@ TEST_F(RpcTest, process_expl_cr_st) {
   SSlot *sslot_0 = &clt_session->sslot_arr[0];
 
   // Ensure that we have enough packets to fill one credit window
-  static_assert(kTestLargeMsgSize / CTransport::kMTU > kSessionCredits, "");
+  static_assert(kTestLargeMsgSize / Transport::kMTU > kSessionCredits, "");
 
   MsgBuffer req = rpc->alloc_msg_buffer(kTestLargeMsgSize);
   MsgBuffer resp = rpc->alloc_msg_buffer(kTestSmallMsgSize);  // Unused

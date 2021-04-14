@@ -10,14 +10,12 @@
 
 namespace erpc {
 
-template <class TTr>
-Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
-              sm_handler_t sm_handler, uint8_t phy_port)
+Rpc::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
+              sm_handler_t sm_handler)
     : nexus(nexus),
       context(context),
       rpc_id(rpc_id),
       sm_handler(sm_handler),
-      phy_port(phy_port),
       numa_node(nexus->numa_node),
       creation_tsc(rdtsc()),
       multi_threaded(nexus->num_bg_threads > 0),
@@ -28,7 +26,6 @@ Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
   rt_assert(!getuid(), "You need to be root to use eRPC");
   rt_assert(rpc_id != kInvalidRpcId, "Invalid Rpc ID");
   rt_assert(!nexus->rpc_id_exists(rpc_id), "Rpc ID already exists");
-  rt_assert(phy_port < kMaxPhyPorts, "Invalid physical port");
   rt_assert(numa_node < kMaxNumaNodes, "Invalid NUMA node");
 
   tls_registry = &nexus->tls_registry;
@@ -41,7 +38,7 @@ Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
                           std::to_string(rpc_id);
     trace_file = fopen(trace_filename.c_str(), "w");
     if (trace_file == nullptr) {
-      delete huge_alloc;
+      delete std_alloc;
       throw std::runtime_error("Failed to open trace file");
     }
   }
@@ -49,20 +46,21 @@ Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
   // Partially initialize the transport without using hugepages. This
   // initializes the transport's memory registration functions required for
   // the hugepage allocator.
-  transport =
-      new TTr(nexus->sm_udp_port, rpc_id, phy_port, numa_node, trace_file);
+  transport = new Transport(nexus->sm_udp_port + 1, rpc_id, numa_node, trace_file);
 
-  huge_alloc = new HugeAlloc(kInitialHugeAllocSize, numa_node,
-                             transport->reg_mr_func, transport->dereg_mr_func);
+  std_alloc = new STDAlloc();
 
   // Complete transport initialization using the hugepage allocator
-  transport->init_hugepage_structures(huge_alloc, rx_ring);
+  transport->init_mem(rx_ring);
+
+  // Complete transport initialization using the hugepage allocator
+  // transport->init_hugepage_structures(std_alloc, rx_ring);
 
   wheel = nullptr;
   if (kCcPacing) {
     timing_wheel_args_t args;
     args.freq_ghz = freq_ghz;
-    args.huge_alloc = huge_alloc;
+    args.std_alloc = std_alloc;
 
     wheel = new TimingWheel(args);
   }
@@ -71,10 +69,9 @@ Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
   for (MsgBuffer &ctrl_msgbuf : ctrl_msgbufs) {
     ctrl_msgbuf = alloc_msg_buffer(8);  // alloc_msg_buffer() requires size > 0
     if (ctrl_msgbuf.buf == nullptr) {
-      delete huge_alloc;
+      delete std_alloc;
       throw std::runtime_error(
-          std::string("Failed to allocate control msgbufs. ") +
-          HugeAlloc::alloc_fail_help_str);
+          std::string("Failed to allocate control msgbufs. "));
     }
   }
 
@@ -94,8 +91,7 @@ Rpc<TTr>::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
   if (kCcPacing) wheel->catchup();  // Wheel could be lagging, so catch up
 }
 
-template <class TTr>
-Rpc<TTr>::~Rpc() {
+Rpc::~Rpc() {
   assert(in_dispatch());
 
   // XXX: Check if all sessions are disconnected
@@ -108,7 +104,7 @@ Rpc<TTr>::~Rpc() {
   // First delete the hugepage allocator. This deregisters and deletes the
   // SHM regions. Deregistration is done using \p transport's deregistration
   // function, so \p transport is deleted later.
-  delete huge_alloc;
+  delete std_alloc;
 
   // Allow \p transport to clean up non-hugepage structures
   delete transport;

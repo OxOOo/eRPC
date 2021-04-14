@@ -62,7 +62,7 @@ TEST_F(RpcTest, process_large_req_one_st) {
   SSlot *sslot_0 = &srv_session->sslot_arr[0];
 
   // The request packet that is recevied
-  uint8_t req[CTransport::kMTU];
+  uint8_t req[Transport::kMTU];
   auto *pkthdr_0 = reinterpret_cast<pkthdr_t *>(req);
   pkthdr_0->format(kTestReqType, kTestLargeMsgSize, server.session_num,
                    PktType::kPktTypeReq, 0 /* pkt_num */, kSessionReqWindow);

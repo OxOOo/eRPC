@@ -3,7 +3,7 @@
 namespace erpc {
 
 // Ensure that we have enough packets to fill one credit window
-static_assert(kTestLargeMsgSize / CTransport::kMTU > kSessionCredits, "");
+static_assert(kTestLargeMsgSize / Transport::kMTU > kSessionCredits, "");
 
 /// Common setup code for client kick tests
 class RpcClientKickTest : public RpcTest {
@@ -25,7 +25,7 @@ class RpcClientKickTest : public RpcTest {
 };
 
 /// Transmit all sslots in a wheel. Return number of packets transmitted.
-size_t wheel_tx_all(Rpc<CTransport> *rpc) {
+size_t wheel_tx_all(Rpc *rpc) {
   for (size_t i = 0; i < kWheelNumWslots; i++) rpc->wheel->reap_wslot(i);
   size_t ret = rpc->wheel->ready_queue.size();
   rpc->process_wheel_st();
