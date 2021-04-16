@@ -4,16 +4,16 @@
 
 namespace erpc {
 
-static constexpr size_t kMsgSizeBits = 24;  ///< Bits for message size
+static constexpr size_t kMsgSizeBits = 34;  ///< Bits for message size
 static constexpr size_t kReqNumBits = 44;   ///< Bits for request number
-static constexpr size_t kPktNumBits = 14;   ///< Bits for packet number
+static constexpr size_t kPktNumBits = 20;   ///< Bits for packet number
 
 /// Debug bits for packet header. Also useful for making the total size of all
 /// pkthdr_t bitfields equal to 128 bits, which makes copying faster.
 static const size_t kPktHdrMagicBits = 128 - (8 + kMsgSizeBits + 16 + 2 + kPktNumBits + kReqNumBits);
 static constexpr size_t kPktHdrMagic = 11;  ///< Magic number for packet headers
 
-static_assert(kPktHdrMagicBits == 20, "");  // Just to keep track
+static_assert(kPktHdrMagicBits == 4, "");  // Just to keep track
 static_assert(kPktHdrMagic < (1ull << kPktHdrMagicBits), "");
 
 /// These packet types are stored as bitfields in the packet header, so don't

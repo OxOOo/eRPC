@@ -23,7 +23,7 @@ Rpc::Rpc(Nexus *nexus, void *context, uint8_t rpc_id,
       rpc_rto_cycles(us_to_cycles(kRpcRTOUs, freq_ghz)),
       rpc_pkt_loss_scan_cycles(rpc_rto_cycles / 10),
       req_func_arr(nexus->req_func_arr) {
-  rt_assert(!getuid(), "You need to be root to use eRPC");
+  // rt_assert(!getuid(), "You need to be root to use eRPC");
   rt_assert(rpc_id != kInvalidRpcId, "Invalid Rpc ID");
   rt_assert(!nexus->rpc_id_exists(rpc_id), "Rpc ID already exists");
   rt_assert(numa_node < kMaxNumaNodes, "Invalid NUMA node");

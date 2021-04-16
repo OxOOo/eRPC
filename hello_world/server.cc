@@ -4,7 +4,7 @@ erpc::Rpc *rpc;
 void req_handler(erpc::ReqHandle *req_handle, void *) {
   printf("received %s\n", req_handle->get_req_msgbuf()->buf);
   auto &resp = req_handle->pre_resp_msgbuf;
-  rpc->resize_msg_buffer(&resp, kMsgSize);
+  rpc->resize_msg_buffer(&resp, 16);
   sprintf(reinterpret_cast<char *>(resp.buf), "world");
 
   rpc->enqueue_response(req_handle, &resp);

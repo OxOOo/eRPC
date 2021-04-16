@@ -75,7 +75,9 @@ class Rpc {
 
  public:
   /// Max request or response *data* size, i.e., excluding packet headers
-  static constexpr size_t kMaxMsgSize = 1024 * 1024 * 1024; // FIXME
+  static constexpr size_t kMaxMsgSize = 1024 * 1024 * 128; // FIXME
+  static_assert((1LL << kMsgSizeBits) >= kMaxMsgSize, "");
+  static_assert((1LL << kPktNumBits) * Transport::kMaxDataPerPkt > 2 * kMaxMsgSize, "");
 
   /**
    * @brief Construct the Rpc object

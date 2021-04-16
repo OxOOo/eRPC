@@ -66,10 +66,6 @@ Transport::Transport(uint16_t data_udp_port, uint8_t rpc_id, size_t numa_node, F
   if (!send_buf) {
     throw std::runtime_error("Transport: Failed of OOM");
   }
-  recv_buf = allocator.allocate(kMaxDataPerPkt + sizeof(pkthdr_t));
-  if (!recv_buf) {
-    throw std::runtime_error("Transport: Failed of OOM");
-  }
 
   ERPC_INFO("eRPC Transport: Created with transport UDP port %u.\n", data_udp_port);
 }
@@ -79,6 +75,9 @@ void Transport::init_mem(uint8_t** rx_ring)
   this->rx_ring = rx_ring;
   this->rx_ring_head = 0;
   this->rx_ring_tail = kNumRxRingEntries - 1;
+  for (size_t i = 0; i < kNumRxRingEntries; i ++) {
+    rx_ring[i] = nullptr;
+  }
 }
 
 Transport::~Transport()
@@ -127,7 +126,13 @@ size_t Transport::rx_burst()
 {
   size_t cnt = 0;
   while (rx_ring_head != rx_ring_tail) {
-    ssize_t size = recv(sock_fd, recv_buf, kMaxDataPerPkt + sizeof(pkthdr_t), 0);
+    if (!rx_ring[rx_ring_head]) {
+      rx_ring[rx_ring_head] = allocator.allocate(kMaxDataPerPkt + sizeof(pkthdr_t));
+      if (!rx_ring[rx_ring_head]) {
+        throw std::runtime_error("Transport: Error of OMM");
+      }
+    }
+    ssize_t size = recv(sock_fd, rx_ring[rx_ring_head], kMaxDataPerPkt + sizeof(pkthdr_t), 0);
     if (size == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return cnt;
@@ -135,8 +140,6 @@ size_t Transport::rx_burst()
         throw std::runtime_error("recv() failed. errno = " + std::string(strerror(errno)));
       }
     } else {
-      rx_ring[rx_ring_head] = allocator.allocate(kMaxDataPerPkt + sizeof(pkthdr_t));
-      memcpy(rx_ring[rx_ring_head], recv_buf, static_cast<size_t>(size));
       cnt ++;
       rx_ring_head = (rx_ring_head + 1) % kNumRxRingEntries;
     }
@@ -149,6 +152,7 @@ void Transport::post_recvs(size_t num_recvs)
   for (size_t i = 0; i < num_recvs; i++) {
     rx_ring_tail = (rx_ring_tail + 1) % kNumRxRingEntries;
     allocator.deallocate(rx_ring[rx_ring_tail], kMaxDataPerPkt + sizeof(pkthdr_t));
+    rx_ring[rx_ring_tail] = nullptr;
   }
 }
 

@@ -2,17 +2,12 @@
 #include <gflags/gflags.h>
 #include <signal.h>
 #include <cstring>
+#include <string>
 #include "../apps_common.h"
 #include "rpc.h"
 #include "util/autorun_helpers.h"
 #include "util/numautils.h"
 #include "util/pmem.h"
-
-#define USE_PMEM false
-
-#if USE_PMEM == true
-#include <libpmem.h>
-#endif
 
 static constexpr size_t kAppEvLoopMs = 1000;  // Duration of event loop
 static constexpr bool kAppVerbose = false;    // Print debug info on datapath
@@ -23,10 +18,10 @@ static constexpr size_t kAppRespSize = 8;
 static constexpr size_t kAppMinReqSize = 64;
 static constexpr size_t kAppMaxReqSize = 1024;
 
-// If true, we persist client requests to a persistent log
-static constexpr bool kAppUsePmem = true;
-static constexpr const char *kAppPmemFile = "/dev/dax12.0";
-static constexpr size_t kAppPmemFileSize = GB(4);
+const std::string uris[] = {
+  "172.17.224.104:31850",
+  "172.17.224.105:31860"
+};
 
 volatile sig_atomic_t ctrl_c_pressed = 0;
 void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
@@ -49,15 +44,6 @@ class ClientContext : public BasicAppContext {
 void req_handler(erpc::ReqHandle *req_handle, void *_context) {
   auto *c = static_cast<ServerContext *>(_context);
 
-#if USE_PMEM == true
-  const erpc::MsgBuffer *req_msgbuf = req_handle->get_req_msgbuf();
-  const size_t copy_size = req_msgbuf->get_data_size();
-  if (c->file_offset + copy_size >= kAppPmemFileSize) c->file_offset = 0;
-  pmem_memcpy_persist(&c->pbuf[c->file_offset], req_msgbuf->buf, copy_size);
-
-  c->file_offset += copy_size;
-#endif
-
   erpc::Rpc::resize_msg_buffer(&req_handle->pre_resp_msgbuf,
                                                  kAppRespSize);
   c->rpc->enqueue_response(req_handle, &req_handle->pre_resp_msgbuf);
@@ -72,13 +58,6 @@ void server_func(erpc::Nexus *nexus) {
                                   basic_sm_handler);
   c.rpc = &rpc;
 
-#if USE_PMEM == true
-  printf("Mapping pmem file...");
-  c.pbuf = erpc::map_devdax_file(kAppPmemFile, kAppPmemFileSize);
-  pmem_memset_persist(c.pbuf, 0, kAppPmemFileSize);
-  printf("done.\n");
-#endif
-
   while (true) {
     rpc.run_event_loop(1000);
     if (ctrl_c_pressed == 1) break;
@@ -86,7 +65,7 @@ void server_func(erpc::Nexus *nexus) {
 }
 
 void connect_session(ClientContext &c) {
-  std::string server_uri = erpc::get_uri_for_process(0);
+  std::string server_uri = uris[0];
   printf("Process %zu: Creating session to %s.\n", FLAGS_process_id,
          server_uri.c_str());
 
@@ -162,14 +141,11 @@ int main(int argc, char **argv) {
   signal(SIGINT, ctrl_c_handler);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  erpc::rt_assert(FLAGS_numa_node <= 1, "Invalid NUMA node");
-
-  erpc::Nexus nexus(erpc::get_uri_for_process(FLAGS_process_id),
-                    FLAGS_numa_node, 0);
+  erpc::Nexus nexus(uris[FLAGS_process_id], 0, 0);
   nexus.register_req_func(kAppReqType, req_handler);
 
   auto t =
       std::thread(FLAGS_process_id == 0 ? server_func : client_func, &nexus);
-  erpc::bind_to_core(t, FLAGS_numa_node, 0);
+  erpc::bind_to_core(t, 0, 0);
   t.join();
 }

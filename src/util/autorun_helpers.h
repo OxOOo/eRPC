@@ -76,31 +76,31 @@ static uint16_t extract_udp_port_from_uri(std::string uri) {
 /// Return the hostname of the process with index process_i, from the autorun
 /// processes file. The autorun process file is formatted like so:
 /// <DNS name> <UDP port> <NUMA>
-static std::string get_hostname_for_process(size_t process_i) {
-  std::string process_file = "../eRPC/scripts/autorun_process_file";
-  std::string line = get_line_n(process_file, process_i);
-  rt_assert(is_valid_process_line(line), "Invalid process line " + line);
+// static std::string get_hostname_for_process(size_t process_i) {
+//   std::string process_file = "../eRPC/scripts/autorun_process_file";
+//   std::string line = get_line_n(process_file, process_i);
+//   rt_assert(is_valid_process_line(line), "Invalid process line " + line);
 
-  std::vector<std::string> split_vec = split(line, ' ');
-  return split_vec[0];
-}
+//   std::vector<std::string> split_vec = split(line, ' ');
+//   return split_vec[0];
+// }
 
 /// Return the SM UDP port of the process with index process_i, from the autorun
 /// processes file. The autorun process file is formatted like so:
 /// <DNS name> <UDP port> <NUMA>
-static std::string get_udp_port_for_process(size_t process_i) {
-  std::string process_file = "../eRPC/scripts/autorun_process_file";
-  std::string line = get_line_n(process_file, process_i);
+// static std::string get_udp_port_for_process(size_t process_i) {
+//   std::string process_file = "../eRPC/scripts/autorun_process_file";
+//   std::string line = get_line_n(process_file, process_i);
 
-  std::vector<std::string> split_vec = split(line, ' ');
-  return split_vec[1];
-}
+//   std::vector<std::string> split_vec = split(line, ' ');
+//   return split_vec[1];
+// }
 
 /// Return the URI of the process with index process_i
-static std::string get_uri_for_process(size_t process_i) {
-  std::string hostname = erpc::get_hostname_for_process(process_i);
-  std::string udp_port_str = erpc::get_udp_port_for_process(process_i);
-  return hostname + ":" + udp_port_str;
-}
+// static std::string get_uri_for_process(size_t process_i) {
+//   std::string hostname = erpc::get_hostname_for_process(process_i);
+//   std::string udp_port_str = erpc::get_udp_port_for_process(process_i);
+//   return hostname + ":" + udp_port_str;
+// }
 
 }  // namespace erpc

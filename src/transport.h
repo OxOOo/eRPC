@@ -21,7 +21,7 @@ class STDAlloc;  // Forward declaration: HugeAlloc needs MemRegInfo
 /// Generic unreliable transport
 class Transport {
  public:
-  static constexpr size_t kMTU = 1024;
+  static constexpr size_t kMTU = 1600;
 
   /// Maximum data bytes (i.e., non-header) in a packet
   static constexpr size_t kMaxDataPerPkt = (kMTU - sizeof(pkthdr_t));
@@ -101,7 +101,7 @@ class Transport {
   void post_recvs(size_t num_recvs);
 
   /// Return the link bandwidth (bytes per second)
-  size_t get_bandwidth() const { return 1 << 25; } // FIXME
+  size_t get_bandwidth() const { return 1 << 30; } // FIXME
 
   // Constructor args first.
   const uint16_t data_udp_port;   ///< UDP port for datapath
@@ -121,6 +121,5 @@ private:
   size_t rx_ring_head, rx_ring_tail;  ///< Current unused RX ring buffer
   int sock_fd;
   uint8_t* send_buf;
-  uint8_t* recv_buf;
 };
 }  // namespace erpc

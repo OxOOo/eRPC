@@ -27,6 +27,11 @@ DEFINE_string(profile, "", "Experiment profile to use");
 DEFINE_double(throttle, 0, "Throttle flows to incast receiver?");
 DEFINE_double(throttle_fraction, 1, "Fraction of fair share to throttle to.");
 
+static const std::string uris[] = {
+  "172.17.224.104:31850",
+  "172.17.224.105:31860"
+};
+
 struct app_stats_t {
   double rx_gbps;
   double tx_gbps;

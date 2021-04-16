@@ -7,6 +7,11 @@
 #include "util/latency.h"
 #include "util/numautils.h"
 
+static const std::string uris[] = {
+  "172.17.224.104:31850",
+  "172.17.224.105:31860"
+};
+
 static constexpr size_t kAppEvLoopMs = 1000;  // Duration of event loop
 static constexpr bool kAppVerbose = false;    // Print debug info on datapath
 static constexpr bool kAppMeasureLatency = false;
@@ -179,7 +184,7 @@ void req_handler(erpc::ReqHandle *req_handle, void *_context) {
     }
     c->rpc->enqueue_response(req_handle, &req_handle->dyn_resp_msgbuf);
   } else {
-    erpc::Rpc<erpc::CTransport>::resize_msg_buffer(&req_handle->pre_resp_msgbuf,
+    erpc::Rpc::resize_msg_buffer(&req_handle->pre_resp_msgbuf,
                                                    FLAGS_msg_size);
 
     if (!kAppPayloadCheck) {
@@ -353,13 +358,13 @@ void thread_func(size_t thread_id, app_stats_t *app_stats, erpc::Nexus *nexus) {
   c.app_stats = app_stats;
   if (thread_id == 0) c.tmp_stat = new TmpStat(app_stats_t::get_template_str());
 
-  std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
-  erpc::rt_assert(port_vec.size() > 0);
-  uint8_t phy_port = port_vec.at(thread_id % port_vec.size());
+  // std::vector<size_t> port_vec = flags_get_numa_ports(FLAGS_numa_node);
+  // erpc::rt_assert(port_vec.size() > 0);
+  // uint8_t phy_port = port_vec.at(thread_id % port_vec.size());
 
-  erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void *>(&c),
+  erpc::Rpc rpc(nexus, static_cast<void *>(&c),
                                   static_cast<uint8_t>(thread_id),
-                                  basic_sm_handler, phy_port);
+                                  basic_sm_handler);
 
   rpc.retry_connect_on_invalid_rpc_id = true;
   c.rpc = &rpc;
@@ -395,7 +400,6 @@ int main(int argc, char **argv) {
 
   erpc::rt_assert(FLAGS_batch_size <= kAppMaxBatchSize, "Invalid batch size");
   erpc::rt_assert(FLAGS_concurrency <= kAppMaxConcurrency, "Invalid cncrrncy.");
-  erpc::rt_assert(FLAGS_numa_node <= 1, "Invalid NUMA node");
 
   // We create a bit fewer sessions
   const size_t num_sessions = 2 * FLAGS_num_processes * FLAGS_num_threads;
@@ -403,8 +407,7 @@ int main(int argc, char **argv) {
                       erpc::Transport::kNumRxRingEntries,
                   "Too few ring buffers");
 
-  erpc::Nexus nexus(erpc::get_uri_for_process(FLAGS_process_id),
-                    FLAGS_numa_node, 0);
+  erpc::Nexus nexus(uris[FLAGS_process_id], 0, 0);
   nexus.register_req_func(kAppReqType, req_handler);
   nexus.register_req_func(kPingReqHandlerType, ping_req_handler);
 
@@ -413,7 +416,7 @@ int main(int argc, char **argv) {
 
   for (size_t i = 0; i < FLAGS_num_threads; i++) {
     threads[i] = std::thread(thread_func, i, app_stats, &nexus);
-    erpc::bind_to_core(threads[i], FLAGS_numa_node, i);
+    erpc::bind_to_core(threads[i], 0, i);
   }
 
   for (auto &thread : threads) thread.join();

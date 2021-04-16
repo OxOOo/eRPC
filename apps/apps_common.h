@@ -23,27 +23,6 @@ DEFINE_uint64(test_ms, 0, "Test milliseconds");
 DEFINE_uint64(sm_verbose, 0, "Print session management debug info");
 DEFINE_uint64(num_processes, 0, "Number of eRPC processes in the cluster");
 DEFINE_uint64(process_id, SIZE_MAX, "The global ID of this process");
-DEFINE_uint64(numa_node, 0, "NUMA node for this process");
-DEFINE_string(numa_0_ports, "", "Fabric ports on NUMA node 0, CSV, no spaces");
-DEFINE_string(numa_1_ports, "", "Fabric ports on NUMA node 1, CSV, no spaces");
-
-// Return the fabric ports for a NUMA node. The user must specify numa_0_ports
-// and numa_1_ports, but they may be empty.
-std::vector<size_t> flags_get_numa_ports(size_t numa_node) {
-  erpc::rt_assert(numa_node <= 1);  // Only NUMA 0 and 1 supported for now
-  std::vector<size_t> ret;
-
-  std::string port_str =
-      numa_node == 0 ? FLAGS_numa_0_ports : FLAGS_numa_1_ports;
-  if (port_str.size() == 0) return ret;
-
-  std::vector<std::string> split_vec = erpc::split(port_str, ',');
-  erpc::rt_assert(split_vec.size() > 0);
-
-  for (auto &s : split_vec) ret.push_back(std::stoull(s));  // stoull trims ' '
-
-  return ret;
-}
 
 // A basic mempool for preallocated objects of type T. eRPC has a faster,
 // hugepage-backed one.
@@ -83,10 +62,13 @@ class TmpStat {
 
   TmpStat(std::string header) {
     erpc::rt_assert(!contains_newline(header), "Invalid stat file header");
-    char *autorun_app = std::getenv("autorun_app");
-    erpc::rt_assert(autorun_app != nullptr, "autorun_app environment invalid");
+    // char *autorun_app = std::getenv("autorun_app");
+    // erpc::rt_assert(autorun_app != nullptr, "autorun_app environment invalid");
 
-    auto filename = std::string("/tmp/") + autorun_app + "_stats_" +
+    // auto filename = std::string("/tmp/") + autorun_app + "_stats_" +
+    //                 std::to_string(FLAGS_process_id);
+
+    auto filename = std::string("/tmp/") + "stats_" +
                     std::to_string(FLAGS_process_id);
 
     printf("Writing stats to file %s\n", filename.c_str());

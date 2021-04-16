@@ -22,8 +22,7 @@ void connect_sessions_func_incast(AppContext *c) {
       "large_rpc_tput: Thread %zu: Creating 1 session to proc 0, thread %zu.\n",
       c->thread_id, rem_tid);
 
-  c->session_num_vec[0] =
-      c->rpc->create_session(erpc::get_uri_for_process(0), rem_tid);
+  c->session_num_vec[0] = c->rpc->create_session(uris[0], rem_tid);
   erpc::rt_assert(c->session_num_vec[0] >= 0, "create_session() failed");
 
   while (c->num_sm_resps != 1) {
